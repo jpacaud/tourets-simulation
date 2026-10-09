@@ -60,9 +60,76 @@ Si la console est bloquée par la DSI, crée les listes à la main avec les colo
 
 ## Étape 2 – Flux 1 « Tourets – Réception scan » (déclencheur HTTP)
 
-À créer dans **Copilot Studio → Flux → + Nouveau flux d'agent**, ou dans **make.powerautomate.com → Flux de cloud instantané**. Le concepteur est le même.
+À créer dans **make.powerautomate.com** (environnement **ELYDAN (default)**) → **+ Créer** → **Flux de cloud instantané** → **Ignorer**, puis nommer le flux `Tourets – Réception scan`.
 
-> ⚠ Le déclencheur HTTP est une **action Premium**. Il faut aussi que ton tenant autorise les déclencheurs HTTP « Tout le monde » (sinon, voir avec l'admin Power Platform).
+### ⚠ Licence : le déclencheur HTTP est Premium
+
+Le déclencheur **Demander → Lors de la réception d'une requête HTTP** est un connecteur **Premium**. Sans licence Premium, on peut le placer dans le concepteur, mais le flux ne pourra pas être enregistré ou activé. **Ce flux 1 est le seul élément Premium de la simulation.** Le flux 2 n'utilise que des connecteurs standard : Périodicité, SharePoint, Outlook et Opération de données.
+
+Options à voir avec ton responsable :
+
+| Option | Coût | Remarque |
+|---|---|---|
+| **Licence Power Automate Premium** pour ton compte | Abonnement mensuel par utilisateur (voir le tarif en vigueur avec l'admin M365) | Solution la plus simple, et c'est celle du guide |
+| **Essai Premium gratuit** (durée limitée) | 0 € | Proposé par Power Automate quand on enregistre un flux Premium, si l'admin a autorisé les essais |
+| **Flux d'agent dans Copilot Studio** | Crédits Copilot Studio consommés à chaque action | Les connecteurs Premium sont utilisables avec une licence Copilot Studio. À vérifier avec l'admin |
+| **Plan B sans Premium : Microsoft Forms** | 0 € | Le scan ouvre un formulaire déjà rempli, et l'utilisateur appuie sur « Envoyer ». Le flux démarre sur « Lorsqu'une nouvelle réponse est envoyée » (standard). Il faut un clic de plus et l'app doit être adaptée |
+
+Il faut aussi que l'admin Power Platform autorise les déclencheurs HTTP « Tout le monde », s'ils sont bloqués par une stratégie DLP.
+
+### 2.1 Pas à pas : premiers blocs et premier test
+
+Libellés de cette interface : le connecteur **Request** s'appelle **Demander**, et l'action **Compose** s'appelle **Message** (dans **Opération de données**). La recherche par mot-clé trouve mal les outils intégrés : passe plutôt par **Ajouter une action → Outils intégrés**, ou par le filtre **Prédéfini**.
+
+**A. Le déclencheur**
+1. Dans l'éditeur, clique sur **Ajouter un déclencheur**, puis **Outils intégrés** (ou filtre **Prédéfini**) → **Demander**.
+2. Choisis **Lors de la réception d'une requête HTTP**.
+3. Dans le panneau du déclencheur :
+   - **Qui peut déclencher le flux** : **Tout le monde** ;
+   - **Schéma JSON du corps de la demande** : laisser **vide** ;
+   - **Paramètres avancés → Méthode** : **POST**.
+
+**B. L'action « Payload »**
+1. Sous le déclencheur, clique sur **+** → **Ajouter une action** → **Outils intégrés** → **Opération de données** → **Message**.
+2. Renomme l'action : en haut de son panneau, clique sur le titre **Message**, efface-le, tape `Payload` et appuie sur **Entrée**.
+3. Clique dans le champ **Entrées**. Deux icônes apparaissent, un éclair ⚡ (contenu dynamique) et **fx** (expression) : clique sur **fx**.
+4. Colle l'expression ci-dessous et clique sur **Ajouter** (ou **OK**). Le champ affiche alors un jeton violet `json(...)`.
+   ```
+   json(string(triggerBody()))
+   ```
+
+**C. Enregistrer et copier l'URL**
+1. En haut à droite, clique sur **Enregistrer**. En cas d'erreur, l'icône **stéthoscope** (Vérificateur de flux) donne le détail.
+2. Clique de nouveau sur le déclencheur : le champ **URL HTTP**, vide avant l'enregistrement, est maintenant rempli.
+3. Copie l'URL avec l'icône **copier** à droite du champ.
+
+> 🔒 Garde cette URL pour toi : sa partie `sig=` suffit pour déclencher le flux. Si elle a circulé, tu peux la régénérer en supprimant puis en recréant le déclencheur.
+
+**D. Envoyer un scan de test**
+1. Appuie sur **Windows + X** → **Terminal** (ou **Windows PowerShell**).
+2. Tape la première ligne, en gardant les **apostrophes** autour de l'URL, puis appuie sur **Entrée** :
+   ```powershell
+   $url = 'COLLE_TON_URL_ICI'
+   ```
+3. Tape la deuxième ligne, puis appuie sur **Entrée** :
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri $url -ContentType 'text/plain' -Body '{"action":"expedition","touret":"TEST-001"}'
+   ```
+4. À ce stade, rien ne s'affiche, et c'est normal : le flux n'a pas encore d'action Réponse. Si du texte rouge apparaît, c'est une erreur à analyser.
+
+**E. Vérifier ce que le flux a reçu**
+1. Dans l'éditeur, clique sur **← Précédent** pour ouvrir la page de détails du flux.
+2. En bas, dans **Historique d'exécution sur 28 jours**, une ligne doit apparaître avec l'heure du test. Si ce n'est pas le cas, clique sur **Actualiser**.
+3. Clique sur la **date** de l'exécution. Chaque bloc porte une coche verte ✅ ou une croix rouge ❌.
+4. Clique sur **Payload** et regarde la section **Sorties**. On attend :
+   ```json
+   { "action": "expedition", "touret": "TEST-001" }
+   ```
+5. Si **Payload** est en échec avec un message sur une valeur base64, remplace l'expression par `json(base64ToString(triggerBody()?['$content']))`.
+
+Quand ce test est bon, on complète le flux avec le tableau ci-dessous, à partir de la ligne 3.
+
+### 2.2 Tableau récapitulatif du flux 1
 
 Les noms d'actions ci-dessous sont à respecter **exactement** (avec `_`), car les expressions y font référence.
 
