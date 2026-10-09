@@ -68,12 +68,12 @@ Les noms d'actions ci-dessous sont à respecter **exactement** (avec `_`), car l
 
 | # | Action | Nom à donner | Paramètres |
 |---|---|---|---|
-| 1 | **Lors de la réception d'une requête HTTP** (When an HTTP request is received) | – | *Qui peut déclencher* : **Tout le monde**. *Méthode* : POST. **Pas de schéma JSON.** |
-| 2 | **Composer** (Compose) | `Payload` | Entrée : `json(string(triggerBody()))` |
+| 1 | connecteur **Demander** (Request) → **Lors de la réception d'une requête HTTP** (When an HTTP request is received) | – | *Qui peut déclencher* : **Tout le monde**. *Méthode* : POST. **Pas de schéma JSON.** |
+| 2 | **Rédiger** (Compose) | `Payload` | Entrée : `json(string(triggerBody()))` |
 | 3 | SharePoint **Obtenir les éléments** (Get items) | `Chercher_touret` | Site : ton site. Liste : ABAS_Tourets. Requête de filtre : `Title eq '@{outputs('Payload')?['touret']}'`. Nombre maximal : 1 |
 | 4 | **Condition** | `Touret_connu` | `length(outputs('Chercher_touret')?['body/value'])` **est supérieur à** `0` |
 | 4-Non | **Réponse** (Response) puis **Terminer** (Terminate) | `Reponse_404` | Code 404. En-têtes : `Access-Control-Allow-Origin` = `*`. Corps : `{"ok": false, "message": "Touret inconnu"}`. Terminer : Réussi |
-| 5 | **Composer** (après la condition) | `Touret` | `first(outputs('Chercher_touret')?['body/value'])` |
+| 5 | **Rédiger** (après la condition) | `Touret` | `first(outputs('Chercher_touret')?['body/value'])` |
 | 6 | **Switch** | `Selon_action` | Sur : `outputs('Payload')?['action']` |
 | 6a | Cas **`expedition`** → SharePoint **Mettre à jour l'élément** (Update item) | `Maj_expedition` | Liste ABAS_Tourets. Id : `outputs('Touret')?['ID']`. Title : `outputs('Touret')?['Title']`. Statut : **En livraison**. DateExpedition : `utcNow()`. NbFactures : `0`. Relance1, Relance2, DerniereFacture, DateRetour : `null` (expression) |
 | 6b | Cas **`retour`** → **Mettre à jour l'élément** | `Maj_retour` | Id et Title : idem. Statut : **Retourné**. DateRetour : `utcNow()`. AdresseRetour : `outputs('Payload')?['position']?['adresse']`. GPSRetour : `concat(outputs('Payload')?['position']?['lat'], ',', outputs('Payload')?['position']?['lng'])` |
@@ -127,14 +127,14 @@ div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000)
 ```
 Une minute vaut 600 000 000 ticks, et `div` fait une division entière.
 
-Les **Filtrer le tableau** (Filter array) se saisissent en **mode avancé** (« Modifier en mode avancé »).
+Les **Filtrer un tableau** (Filter array) se saisissent en **mode avancé** (« Modifier en mode avancé »).
 
 | # | Action | Nom | Paramètres |
 |---|---|---|---|
-| a | **Filtrer le tableau** | `Tourets_du_client` | De : `outputs('Tourets_actifs')?['body/value']`. Condition : `@equals(item()?['CodeClient'], items('Pour_chaque_client')?['Title'])` |
-| b | **Filtrer le tableau** | `A_relancer_1` | De : `body('Tourets_du_client')`. Condition : `@and(empty(item()?['Relance1']), greaterOrEquals(MIN, variables('R1_min')))` |
-| c | **Filtrer le tableau** | `A_relancer_2` | De : `body('Tourets_du_client')`. Condition : `@and(not(empty(item()?['Relance1'])), empty(item()?['Relance2']), greaterOrEquals(MIN, variables('R2_min')))` |
-| d | **Filtrer le tableau** | `A_facturer` | De : `body('Tourets_du_client')`. Condition : `@and(greaterOrEquals(MIN, variables('Fact_min')), less(coalesce(item()?['NbFactures'], 0), add(div(sub(MIN, variables('Fact_min')), variables('Periode_min')), 1)))` |
+| a | **Filtrer un tableau** | `Tourets_du_client` | De : `outputs('Tourets_actifs')?['body/value']`. Condition : `@equals(item()?['CodeClient'], items('Pour_chaque_client')?['Title'])` |
+| b | **Filtrer un tableau** | `A_relancer_1` | De : `body('Tourets_du_client')`. Condition : `@and(empty(item()?['Relance1']), greaterOrEquals(MIN, variables('R1_min')))` |
+| c | **Filtrer un tableau** | `A_relancer_2` | De : `body('Tourets_du_client')`. Condition : `@and(not(empty(item()?['Relance1'])), empty(item()?['Relance2']), greaterOrEquals(MIN, variables('R2_min')))` |
+| d | **Filtrer un tableau** | `A_facturer` | De : `body('Tourets_du_client')`. Condition : `@and(greaterOrEquals(MIN, variables('Fact_min')), less(coalesce(item()?['NbFactures'], 0), add(div(sub(MIN, variables('Fact_min')), variables('Periode_min')), 1)))` |
 
 La condition de `A_facturer` se lit ainsi : le nombre de périodes dues vaut 1 + (MIN − 30) ÷ 30. Si le touret a été facturé moins de fois que ce nombre, on le facture une fois de plus. On reproduit donc la règle « tout mois commencé est facturé ».
 
@@ -170,8 +170,8 @@ Duplique le bloc Relance 1 (menu ··· → **Copier dans mon Presse-papiers**, 
 
 | Action | Nom | Paramètres |
 |---|---|---|
-| **Composer** | `Num_facture` | `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])` |
-| **Composer** | `Montant_total` | `mul(length(body('A_facturer')), variables('Tarif'))` |
+| **Rédiger** (Compose) | `Num_facture` | `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])` |
+| **Rédiger** (Compose) | `Montant_total` | `mul(length(body('A_facturer')), variables('Tarif'))` |
 | **Sélectionner** | `Lignes_facture` | De : `body('A_facturer')`. `Touret` → `item()?['Title']` · `Type` → `item()?['TypeTouret']` · `BL` → `item()?['BL']` · `Période n°` → `add(coalesce(item()?['NbFactures'], 0), 1)` · `Montant (€)` → `variables('Tarif')` |
 | **Sélectionner** (mode texte) | `Numeros_facture` | De : `body('A_facturer')`. Valeur : `item()?['Title']` |
 | **Créer une table HTML** | `Table_facture` | De : `body('Lignes_facture')` |
