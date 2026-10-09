@@ -174,83 +174,299 @@ Invoke-RestMethod -Method Post -Uri $url -ContentType "text/plain" -Body '{"acti
 
 ## Étape 3 – Flux 2 « Tourets – Cycle relances et facturation » (planifié)
 
-Copilot Studio → **+ Nouveau flux d'agent**, ou Power Automate → **Flux de cloud planifié**.
+✅ **Aucun connecteur Premium** : ce flux fonctionne avec une licence Microsoft 365 standard.
 
-### 3.1 Déclencheur et paramètres
+**Principe** : toutes les 2 minutes, le flux lit les tourets « En livraison » du faux ABAS. Pour chaque client, il cherche les tourets qui doivent recevoir la relance 1, la relance 2 ou une facture, envoie **un seul mail par client et par type**, puis met à jour les tourets concernés.
 
-| # | Action | Nom | Paramètres |
-|---|---|---|---|
-| 1 | **Périodicité** (Recurrence) | – | Toutes les **2 minutes**. ⚙ *Paramètres* → **Contrôle d'accès concurrentiel : activé, degré 1** (évite deux exécutions en même temps, donc des mails en double) |
-| 2 | **Initialiser une variable** ×6 | – | `EmailTest` (Chaîne) = `jpacaud@elydan.eu` · `R1_min` (Entier) = 10 · `R2_min` (Entier) = 20 · `Fact_min` (Entier) = 30 · `Periode_min` (Entier) = 30 · `Tarif` (Entier) = 130 |
-| 3 | SharePoint **Obtenir les éléments** | `Tourets_actifs` | Liste ABAS_Tourets. Filtre : `Statut eq 'En livraison'` |
-| 4 | SharePoint **Obtenir les éléments** | `Clients` | Liste ABAS_Clients |
-| 5 | **Appliquer à chacun** (Apply to each) | `Pour_chaque_client` | Sur : `outputs('Clients')?['body/value']` |
-
-### 3.2 Dans `Pour_chaque_client`
-
-Dans les filtres ci-dessous, **MIN** désigne le nombre de minutes depuis l'expédition. Recopie l'expression suivante à la place de MIN :
+**Structure finale du flux :**
 ```
-div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000)
+Périodicité (toutes les 2 min)
+├─ Initialiser la variable ×6        EmailTest, R1_min, R2_min, Fact_min, Periode_min, Tarif
+├─ Tourets_actifs                    (SharePoint – Obtenir les éléments)
+├─ Clients                           (SharePoint – Obtenir les éléments)
+└─ Pour_chaque_client                (Pour chaque)
+   ├─ Tourets_du_client              (Filtrer un tableau)
+   ├─ A_relancer_1                   (Filtrer un tableau)
+   ├─ A_relancer_2                   (Filtrer un tableau)
+   ├─ A_facturer                     (Filtrer un tableau)
+   ├─ Si_relance_1  (Condition) → Oui : Lignes_R1, Numeros_R1, Table_R1, Mail_R1, Journal_R1, Maj_R1
+   ├─ Si_relance_2  (Condition) → Oui : Lignes_R2, Numeros_R2, Table_R2, Mail_R2, Journal_R2, Maj_R2
+   └─ Si_facture    (Condition) → Oui : Num_facture, Montant_total, Lignes_facture, Numeros_facture,
+                                         Table_facture, Enregistrer_facture, Mail_facture, Maj_facture
 ```
-Une minute vaut 600 000 000 ticks, et `div` fait une division entière.
 
-> Libellés de cette interface : **Message** = Compose · **Demander** = Request · **Jointure** = Join · **Créer un tableau HTML** = Create HTML table.
+**Règles qui valent pour tout le flux :**
+- **Noms des actions** : renomme chaque action **exactement** comme indiqué, avec les `_` et sans accents. Pour cela, clique sur son titre en haut de son panneau, tape le nouveau nom et appuie sur **Entrée**. Les expressions désignent les actions par leur nom.
+- **Expressions** (texte en `code`) : clique dans le champ, puis sur **fx**, colle l'expression et clique sur **Ajouter**. Ne tape pas une expression directement dans le champ : elle serait prise comme du texte.
+- **Actions intégrées** : passe par **Ajouter une action → Outils intégrés**. Dans cette interface, Compose s'appelle **Message**, et les actions **Filtrer un tableau**, **Sélectionner** et **Créer un tableau HTML** sont dans **Opération de données**.
+- **Site SharePoint** : dans chaque action SharePoint, choisis **Entrer une valeur personnalisée** et colle `https://elydan-my.sharepoint.com/personal/jpacaud_elydan_eu`.
+- **Enregistrement** : clique sur **Enregistrer** régulièrement. En cas d'erreur, l'icône **stéthoscope** (Vérificateur de flux) indique l'action en cause.
 
-Les **Filtrer un tableau** (Filter array) se saisissent en **mode avancé** (« Modifier en mode avancé »).
+---
 
-| # | Action | Nom | Paramètres |
-|---|---|---|---|
-| a | **Filtrer un tableau** | `Tourets_du_client` | De : `outputs('Tourets_actifs')?['body/value']`. Condition : `@equals(item()?['CodeClient'], items('Pour_chaque_client')?['Title'])` |
-| b | **Filtrer un tableau** | `A_relancer_1` | De : `body('Tourets_du_client')`. Condition : `@and(empty(item()?['Relance1']), greaterOrEquals(MIN, variables('R1_min')))` |
-| c | **Filtrer un tableau** | `A_relancer_2` | De : `body('Tourets_du_client')`. Condition : `@and(not(empty(item()?['Relance1'])), empty(item()?['Relance2']), greaterOrEquals(MIN, variables('R2_min')))` |
-| d | **Filtrer un tableau** | `A_facturer` | De : `body('Tourets_du_client')`. Condition : `@and(greaterOrEquals(MIN, variables('Fact_min')), less(coalesce(item()?['NbFactures'], 0), add(div(sub(MIN, variables('Fact_min')), variables('Periode_min')), 1)))` |
+### 3.1 Créer le flux et son déclencheur
 
-La condition de `A_facturer` se lit ainsi : le nombre de périodes dues vaut 1 + (MIN − 30) ÷ 30. Si le touret a été facturé moins de fois que ce nombre, on le facture une fois de plus. On reproduit donc la règle « tout mois commencé est facturé ».
+1. Sur **make.powerautomate.com** : **+ Créer** → **Flux de cloud planifié**.
+2. Nom du flux : `Tourets – Cycle relances et facturation`.
+3. **Répéter toutes les** : `2` **Minute**, puis **Créer**. Le déclencheur **Périodicité** (Recurrence) est déjà en place.
+4. **Éviter les exécutions en double** : clique sur le déclencheur **Périodicité**, puis sur l'onglet **Paramètres** du panneau. Active **Contrôle d'accès concurrentiel** et règle **Degré de parallélisme** sur **1**.
 
-#### Bloc Relance 1 – **Condition** `Si_relance_1` : `length(body('A_relancer_1'))` est supérieur à `0`. Dans **Oui** :
+### 3.2 Les 6 variables
 
-| Action | Nom | Paramètres |
+Sous le déclencheur : **+** → **Ajouter une action** → **Outils intégrés** → **Variable** → **Initialiser la variable**. Répète l'opération 6 fois, chaque nouvelle variable sous la précédente :
+
+| Nom | Type | Valeur |
 |---|---|---|
-| **Sélectionner** (Select) | `Lignes_R1` | De : `body('A_relancer_1')`. Mappage : `Touret` → `item()?['Title']` · `Type` → `item()?['TypeTouret']` · `BL` → `item()?['BL']` · `Expédié le` → `convertFromUtc(item()?['DateExpedition'], 'Romance Standard Time', 'dd/MM/yyyy HH:mm')` |
-| **Sélectionner** (mode texte, bouton « Mode texte ») | `Numeros_R1` | De : `body('A_relancer_1')`. Valeur : `item()?['Title']` |
-| **Créer un tableau HTML** | `Table_R1` | De : `body('Lignes_R1')` |
-| Outlook **Envoyer un e-mail (V2)** | `Mail_R1` | À : `variables('EmailTest')`. Objet : `[TEST] Relance 1 – tourets à retourner – @{items('Pour_chaque_client')?['NomClient']}`. Corps : voir modèle ci-dessous |
-| SharePoint **Créer un élément** | `Journal_R1` | Liste ABAS_Relances. Title : `concat('R1-', items('Pour_chaque_client')?['Title'], '-', formatDateTime(utcNow(), 'yyyyMMddHHmmss'))`. CodeClient / NomClient : du client. Niveau : 1. Tourets : `join(body('Numeros_R1'), ', ')`. Destinataire : `items('Pour_chaque_client')?['EmailClient']`. DateEnvoi : `utcNow()` |
-| **Appliquer à chacun** | `Maj_R1` | Sur : `body('A_relancer_1')` → **Mettre à jour l'élément** ABAS_Tourets. Id : `items('Maj_R1')?['ID']`. Title : `items('Maj_R1')?['Title']`. Relance1 : `utcNow()` |
+| `EmailTest` | Chaîne (String) | `jpacaud@elydan.eu` |
+| `R1_min` | Entier (Integer) | `10` |
+| `R2_min` | Entier | `20` |
+| `Fact_min` | Entier | `30` |
+| `Periode_min` | Entier | `30` |
+| `Tarif` | Entier | `130` |
 
-Modèle de corps du mail de relance (à remplacer par le vrai gabarit plus tard) :
-```html
-<p style="color:#b26a00"><b>SIMULATION</b> – destinataire réel prévu : @{items('Pour_chaque_client')?['EmailClient']}</p>
-<p>Bonjour,</p>
-<p>Sauf erreur de notre part, les tourets suivants livrés à <b>@{items('Pour_chaque_client')?['NomClient']}</b> ne nous ont pas encore été retournés :</p>
-@{body('Table_R1')}
-<p>Merci de nous signaler leur mise à disposition en scannant le QR code présent sur chaque touret.</p>
-<p>Cordialement,<br>Elydan</p>
+Ici, les valeurs se tapent directement, sans **fx**. Tu n'as pas besoin de renommer ces actions : c'est le champ **Nom** de la variable qui compte.
+
+### 3.3 Lire le faux ABAS
+
+**Action `Tourets_actifs`**
+1. **+** → **Ajouter une action** → recherche `SharePoint` → **Obtenir les éléments** (Get items).
+2. Renomme-la `Tourets_actifs`.
+3. **Adresse du site** : **Entrer une valeur personnalisée** → `https://elydan-my.sharepoint.com/personal/jpacaud_elydan_eu`.
+4. **Nom de la liste** : `ABAS_Tourets`.
+5. Ouvre **Paramètres avancés**, puis **Requête de filtre** et tape tel quel (sans fx) :
+   ```
+   Statut eq 'En livraison'
+   ```
+6. **Nombre maximal** : `500`.
+
+**Action `Clients`**
+1. **+** → SharePoint → **Obtenir les éléments**, renommée `Clients`.
+2. Même site. **Nom de la liste** : `ABAS_Clients`. Pas de filtre.
+
+**Enregistre.**
+
+### 3.4 La boucle par client
+
+1. **+** → **Ajouter une action** → **Outils intégrés** → **Control** → **Pour chaque** (Apply to each).
+2. Renomme-la `Pour_chaque_client`.
+3. Dans le champ **Sélectionner une sortie des étapes précédentes**, clique sur **fx** et colle :
+   ```
+   outputs('Clients')?['body/value']
+   ```
+
+**Toutes les actions suivantes vont À L'INTÉRIEUR de `Pour_chaque_client`.** Utilise le **+** situé dans le cadre de la boucle, et non celui qui se trouve en dessous.
+
+### 3.5 Les 4 filtres
+
+Pour chaque filtre :
+1. **+** (dans la boucle) → **Outils intégrés** → **Opération de données** → **Filtrer un tableau**, puis renomme l'action.
+2. Champ **De** : **fx**, puis colle l'expression « De ».
+3. Sous la condition, clique sur **Modifier en mode avancé** et **remplace tout le contenu** par l'expression « Condition », qui commence par `@`. En mode avancé, on colle directement le texte, sans fx.
+
+**`Tourets_du_client`**, pour garder les tourets actifs de ce client :
+- De : `outputs('Tourets_actifs')?['body/value']`
+- Condition :
+  ```
+  @equals(item()?['CodeClient'], items('Pour_chaque_client')?['Title'])
+  ```
+
+**`A_relancer_1`**, pour les tourets expédiés depuis au moins 10 min et pas encore relancés :
+- De : `body('Tourets_du_client')`
+- Condition :
+  ```
+  @and(empty(item()?['Relance1']), greaterOrEquals(div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000), variables('R1_min')))
+  ```
+
+**`A_relancer_2`**, pour les tourets déjà relancés une fois et expédiés depuis au moins 20 min :
+- De : `body('Tourets_du_client')`
+- Condition :
+  ```
+  @and(not(empty(item()?['Relance1'])), empty(item()?['Relance2']), greaterOrEquals(div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000), variables('R2_min')))
+  ```
+
+**`A_facturer`**, pour les tourets expédiés depuis au moins 30 min qui n'ont pas encore été facturés pour la période en cours :
+- De : `body('Tourets_du_client')`
+- Condition :
+  ```
+  @and(greaterOrEquals(div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000), variables('Fact_min')), less(coalesce(item()?['NbFactures'], 0), add(div(sub(div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000), variables('Fact_min')), variables('Periode_min')), 1)))
+  ```
+
+> Comment lire les calculs : `div(sub(ticks(utcNow()), ticks(DateExpedition)), 600000000)` donne le nombre de minutes écoulées depuis l'expédition (une minute vaut 600 000 000 ticks). Pour la facturation, le nombre de périodes dues vaut 1 + (minutes − 30) ÷ 30 : 1 période à 30 min, 2 à 60 min, 3 à 90 min… Si le touret a été facturé moins de fois que ce nombre, on le facture une fois de plus. C'est la règle « tout mois commencé est facturé ».
+
+**Enregistre.**
+
+### 3.6 Bloc Relance 1
+
+**La condition**
+1. **+** (dans la boucle, sous les filtres) → **Outils intégrés** → **Control** → **Condition**, renommée `Si_relance_1`.
+2. Valeur de gauche : **fx** → `length(body('A_relancer_1'))`
+3. Opérateur : **est supérieur à**. Valeur de droite : `0`
+
+**Toutes les actions ci-dessous vont dans la branche « Vrai » (ou « Oui ») de `Si_relance_1`.**
+
+**a. `Lignes_R1`** : **Opération de données → Sélectionner**
+- De : **fx** → `body('A_relancer_1')`
+- **Mappage** : une ligne par colonne du tableau du mail. Tape la clé à gauche et mets la valeur à droite avec **fx** :
+
+| Clé | Valeur (fx) |
+|---|---|
+| `Touret` | `item()?['Title']` |
+| `Type` | `item()?['TypeTouret']` |
+| `BL` | `item()?['BL']` |
+| `Expédié le` | `convertFromUtc(item()?['DateExpedition'], 'Romance Standard Time', 'dd/MM/yyyy HH:mm')` |
+
+**b. `Numeros_R1`** : **Opération de données → Sélectionner**, qui sert à obtenir la simple liste des numéros
+- De : **fx** → `body('A_relancer_1')`
+- À droite de **Mappage**, clique sur l'icône **Basculer en mode texte** (« T »), puis dans l'unique champ : **fx** → `item()?['Title']`
+
+**c. `Table_R1`** : **Opération de données → Créer un tableau HTML**
+- De : **fx** → `body('Lignes_R1')`
+- Colonnes : **Automatique**
+
+**d. `Mail_R1`** : **+** → recherche `Outlook` → **Office 365 Outlook** → **Envoyer un e-mail (V2)**
+- La première fois, Power Automate demande de se connecter : accepte avec ton compte Elydan.
+- **À** : **fx** → `variables('EmailTest')`
+- **Objet** : **fx** →
+  ```
+  concat('[TEST] Relance 1 – tourets à retourner – ', items('Pour_chaque_client')?['NomClient'])
+  ```
+- **Corps** : clique dans le corps, puis **fx** →
+  ```
+  concat('<p style="color:#b26a00"><b>SIMULATION</b> – destinataire réel prévu : ', items('Pour_chaque_client')?['EmailClient'], '</p><p>Bonjour,</p><p>Sauf erreur de notre part, les tourets suivants livrés à <b>', items('Pour_chaque_client')?['NomClient'], '</b> ne nous ont pas encore été retournés :</p>', body('Table_R1'), '<p>Merci de nous signaler leur mise à disposition en scannant le QR code présent sur chaque touret.</p><p>Cordialement,<br>Elydan</p>')
+  ```
+  Ce corps sera remplacé par le gabarit officiel plus tard.
+
+**e. `Journal_R1`** : **SharePoint → Créer un élément**
+- Site : valeur personnalisée (voir plus haut). Liste : `ABAS_Relances`.
+- Les colonnes de la liste apparaissent. Ouvre **Afficher tout** (ou **Paramètres avancés**) si certaines sont masquées :
+
+| Colonne | Valeur (fx) |
+|---|---|
+| **Reference** (colonne Title) | `concat('R1-', items('Pour_chaque_client')?['Title'], '-', formatDateTime(utcNow(), 'yyyyMMddHHmmss'))` |
+| CodeClient | `items('Pour_chaque_client')?['Title']` |
+| NomClient | `items('Pour_chaque_client')?['NomClient']` |
+| Niveau | `1` (tapé directement) |
+| Tourets | `join(body('Numeros_R1'), ', ')` |
+| Destinataire | `items('Pour_chaque_client')?['EmailClient']` |
+| DateEnvoi | `utcNow()` |
+
+**f. `Maj_R1`** : noter la relance sur chaque touret concerné
+1. **Control → Pour chaque**, renommée `Maj_R1`. Sortie : **fx** → `body('A_relancer_1')`
+2. **Dans** `Maj_R1` : **SharePoint → Mettre à jour l'élément** (Update item)
+   - Site : valeur personnalisée. Liste : `ABAS_Tourets`
+   - **Id** : **fx** → `items('Maj_R1')?['ID']`
+   - **NumTouret** (colonne Title, obligatoire) : **fx** → `items('Maj_R1')?['Title']`
+   - **Relance1** : **fx** → `utcNow()`
+   - Laisse **tous les autres champs vides** : ils ne seront pas modifiés.
+
+**Enregistre.**
+
+### 3.7 Bloc Relance 2
+
+Même construction que la relance 1, **dans la boucle `Pour_chaque_client`**, sous `Si_relance_1` et non à l'intérieur. Refais-la plutôt que de la copier : une copie renomme les actions et casse les expressions.
+
+| Élément | Valeur pour la relance 2 |
+|---|---|
+| Condition | `Si_relance_2` : **fx** `length(body('A_relancer_2'))` **est supérieur à** `0` |
+| `Lignes_R2` | De : `body('A_relancer_2')`. Même mappage que `Lignes_R1` |
+| `Numeros_R2` | De : `body('A_relancer_2')`. Mode texte : `item()?['Title']` |
+| `Table_R2` | De : `body('Lignes_R2')` |
+| `Mail_R2` – À | `variables('EmailTest')` |
+| `Mail_R2` – Objet | `concat('[TEST] Relance 2 – tourets à retourner – ', items('Pour_chaque_client')?['NomClient'])` |
+| `Mail_R2` – Corps | voir ci-dessous |
+| `Journal_R2` | Comme `Journal_R1`, avec **Reference** : `concat('R2-', items('Pour_chaque_client')?['Title'], '-', formatDateTime(utcNow(), 'yyyyMMddHHmmss'))`, **Niveau** : `2`, **Tourets** : `join(body('Numeros_R2'), ', ')` |
+| `Maj_R2` | **Pour chaque** sur `body('A_relancer_2')`, avec dedans **Mettre à jour l'élément** : Id `items('Maj_R2')?['ID']`, NumTouret `items('Maj_R2')?['Title']`, **Relance2** `utcNow()` |
+
+Corps de `Mail_R2` (fx) :
+```
+concat('<p style="color:#b26a00"><b>SIMULATION</b> – destinataire réel prévu : ', items('Pour_chaque_client')?['EmailClient'], '</p><p>Bonjour,</p><p>Malgré notre précédente relance, les tourets suivants livrés à <b>', items('Pour_chaque_client')?['NomClient'], '</b> ne nous ont toujours pas été retournés :</p>', body('Table_R2'), '<p>Sans retour de votre part, la location sera facturée ', string(variables('Tarif')), ' € HT par touret et par mois commencé.</p><p>Cordialement,<br>Elydan</p>')
 ```
 
-#### Bloc Relance 2 – même chose que le bloc Relance 1
+**Enregistre.**
 
-Duplique le bloc Relance 1 (menu ··· → **Copier dans mon Presse-papiers**, puis **Coller**) et remplace :
-- `A_relancer_1` → `A_relancer_2`, et les noms `_R1` → `_R2` ;
-- `Relance 1` → `Relance 2` dans l'objet du mail, `R1-` → `R2-` et Niveau 1 → 2 dans le journal ;
-- dans `Maj_R2`, renseigner **Relance2** au lieu de Relance1.
+### 3.8 Bloc Facturation
 
-#### Bloc Facturation – **Condition** `Si_facture` : `length(body('A_facturer'))` est supérieur à `0`. Dans **Oui** :
+**La condition** : **Control → Condition**, renommée `Si_facture`, **dans la boucle** sous `Si_relance_2`.
+- Gauche : **fx** → `length(body('A_facturer'))` · **est supérieur à** · `0`
 
-| Action | Nom | Paramètres |
-|---|---|---|
-| **Message** (Compose) | `Num_facture` | `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])` |
-| **Message** (Compose) | `Montant_total` | `mul(length(body('A_facturer')), variables('Tarif'))` |
-| **Sélectionner** | `Lignes_facture` | De : `body('A_facturer')`. `Touret` → `item()?['Title']` · `Type` → `item()?['TypeTouret']` · `BL` → `item()?['BL']` · `Période n°` → `add(coalesce(item()?['NbFactures'], 0), 1)` · `Montant (€)` → `variables('Tarif')` |
-| **Sélectionner** (mode texte) | `Numeros_facture` | De : `body('A_facturer')`. Valeur : `item()?['Title']` |
-| **Créer un tableau HTML** | `Table_facture` | De : `body('Lignes_facture')` |
-| SharePoint **Créer un élément** | `Enregistrer_facture` | Liste ABAS_Factures. Title : `outputs('Num_facture')`. CodeClient / NomClient : du client. Tourets : `join(body('Numeros_facture'), ', ')`. NbTourets : `length(body('A_facturer'))`. Montant : `outputs('Montant_total')`. DateFacture : `utcNow()` |
-| Outlook **Envoyer un e-mail (V2)** | `Mail_facture` | À : `variables('EmailTest')`. Objet : `[TEST] Facture de location fictive @{outputs('Num_facture')} – @{items('Pour_chaque_client')?['NomClient']}`. Corps : client, tableau `@{body('Table_facture')}`, total `@{outputs('Montant_total')} € HT` |
-| **Appliquer à chacun** | `Maj_facture` | Sur : `body('A_facturer')` → **Mettre à jour l'élément** ABAS_Tourets. Id / Title : `items('Maj_facture')?['ID']` / `['Title']`. NbFactures : `add(coalesce(items('Maj_facture')?['NbFactures'], 0), 1)`. DerniereFacture : `utcNow()` |
+**Dans la branche « Vrai » :**
 
-**Enregistrer** et laisser le flux activé pendant les tests.
+**a. `Num_facture`** : **Opération de données → Message**
+- Entrées : **fx** → `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])`
 
-> 💡 **Coût :** une exécution toutes les 2 minutes donne environ 720 exécutions par jour. Dans Copilot Studio, les flux d'agent consomment des crédits Copilot à l'action. Vérifie le mode de facturation de ton environnement, et **désactive le flux 2 en dehors des sessions de test**. Dans Power Automate avec une licence Premium, il n'y a pas ce coût à l'action.
+**b. `Montant_total`** : **Message**
+- Entrées : **fx** → `mul(length(body('A_facturer')), variables('Tarif'))`
+
+**c. `Lignes_facture`** : **Sélectionner**
+- De : **fx** → `body('A_facturer')`
+- Mappage :
+
+| Clé | Valeur (fx) |
+|---|---|
+| `Touret` | `item()?['Title']` |
+| `Type` | `item()?['TypeTouret']` |
+| `BL` | `item()?['BL']` |
+| `Période n°` | `add(coalesce(item()?['NbFactures'], 0), 1)` |
+| `Montant (€ HT)` | `variables('Tarif')` |
+
+**d. `Numeros_facture`** : **Sélectionner** en mode texte
+- De : `body('A_facturer')` · valeur : `item()?['Title']`
+
+**e. `Table_facture`** : **Créer un tableau HTML**
+- De : **fx** → `body('Lignes_facture')`
+
+**f. `Enregistrer_facture`** : **SharePoint → Créer un élément**, liste `ABAS_Factures`
+
+| Colonne | Valeur (fx) |
+|---|---|
+| **NumFacture** (colonne Title) | `outputs('Num_facture')` |
+| CodeClient | `items('Pour_chaque_client')?['Title']` |
+| NomClient | `items('Pour_chaque_client')?['NomClient']` |
+| Tourets | `join(body('Numeros_facture'), ', ')` |
+| NbTourets | `length(body('A_facturer'))` |
+| Montant | `outputs('Montant_total')` |
+| DateFacture | `utcNow()` |
+
+**g. `Mail_facture`** : **Office 365 Outlook → Envoyer un e-mail (V2)**
+- À : `variables('EmailTest')`
+- Objet (fx) :
+  ```
+  concat('[TEST] Facture de location fictive ', outputs('Num_facture'), ' – ', items('Pour_chaque_client')?['NomClient'])
+  ```
+- Corps (fx) :
+  ```
+  concat('<p style="color:#b26a00"><b>SIMULATION</b> – facture fictive, destinataire réel prévu : ', items('Pour_chaque_client')?['EmailClient'], '</p><p>Facture <b>', outputs('Num_facture'), '</b> – location de tourets non restitués – client <b>', items('Pour_chaque_client')?['NomClient'], '</b></p>', body('Table_facture'), '<p><b>Total : ', string(outputs('Montant_total')), ' € HT</b></p>')
+  ```
+
+**h. `Maj_facture`** : **Control → Pour chaque** sur **fx** `body('A_facturer')`, avec dedans **SharePoint → Mettre à jour l'élément**, liste `ABAS_Tourets` :
+- Id : `items('Maj_facture')?['ID']`
+- NumTouret : `items('Maj_facture')?['Title']`
+- NbFactures : `add(coalesce(items('Maj_facture')?['NbFactures'], 0), 1)`
+- DerniereFacture : `utcNow()`
+
+**Enregistre.** Le flux est complet.
+
+### 3.9 Tester le flux 2 sans l'app (ni Premium)
+
+Le flux 2 ne lit que la liste `ABAS_Tourets`. On peut donc simuler une expédition **à la main** :
+
+1. Ouvre la liste : https://elydan-my.sharepoint.com/personal/jpacaud_elydan_eu/Lists/ABAS_Tourets
+2. Sur **TEST-001**, clique sur **Modifier** (ou ouvre l'élément et clique sur **Modifier tout**) :
+   - **Statut** : `En livraison` ;
+   - **DateExpedition** : aujourd'hui, **il y a 35 minutes**, pour déclencher tout de suite relance 1, relance 2 et facture ;
+   - **Enregistrer**.
+3. Fais de même avec **TEST-004** (même client CLI-001), pour vérifier le regroupement dans un seul mail.
+4. Dans Power Automate, ouvre le flux 2 et clique sur **Tester** → **Manuellement** → **Tester**, sans attendre les 2 minutes.
+
+**Résultats attendus :**
+- **1re exécution** : un mail **Relance 1** pour *Exemple TP Rhône-Alpes*, listant TEST-001 et TEST-004, et une facture **FS-…** de 260 € (2 × 130 €). Les colonnes Relance1, NbFactures = 1 et DerniereFacture sont remplies.
+- **2e exécution** (2 min plus tard) : un mail **Relance 2**. La relance 2 attend que la relance 1 soit enregistrée, d'où ce décalage d'une exécution.
+- Ensuite, plus rien jusqu'à 60 min après l'expédition, puis une facture « Période n° 2 ».
+- **Arrêter le cycle** : passe **Statut** à `Retourné` (ou `Perdu` / `Abîmé`). Les exécutions suivantes ne font plus rien pour ce touret.
+
+En cas d'erreur, ouvre l'exécution dans l'historique et clique sur l'action en rouge : son message indique en général le nom d'action ou la colonne en cause.
+
+> 💡 **Désactive le flux 2 en dehors des tests** (page du flux → **Désactiver**), pour éviter qu'il tourne toutes les 2 minutes en continu.
 
 ---
 
