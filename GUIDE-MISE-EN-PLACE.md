@@ -69,11 +69,11 @@ Les noms d'actions ci-dessous sont à respecter **exactement** (avec `_`), car l
 | # | Action | Nom à donner | Paramètres |
 |---|---|---|---|
 | 1 | connecteur **Demander** (Request) → **Lors de la réception d'une requête HTTP** (When an HTTP request is received) | – | *Qui peut déclencher* : **Tout le monde**. *Méthode* : POST. **Pas de schéma JSON.** |
-| 2 | **Rédiger** (Compose) | `Payload` | Entrée : `json(string(triggerBody()))` |
+| 2 | **Message** (Compose) | `Payload` | Entrée : `json(string(triggerBody()))` |
 | 3 | SharePoint **Obtenir les éléments** (Get items) | `Chercher_touret` | Site : ton site. Liste : ABAS_Tourets. Requête de filtre : `Title eq '@{outputs('Payload')?['touret']}'`. Nombre maximal : 1 |
 | 4 | **Condition** | `Touret_connu` | `length(outputs('Chercher_touret')?['body/value'])` **est supérieur à** `0` |
 | 4-Non | **Réponse** (Response) puis **Terminer** (Terminate) | `Reponse_404` | Code 404. En-têtes : `Access-Control-Allow-Origin` = `*`. Corps : `{"ok": false, "message": "Touret inconnu"}`. Terminer : Réussi |
-| 5 | **Rédiger** (après la condition) | `Touret` | `first(outputs('Chercher_touret')?['body/value'])` |
+| 5 | **Message** (après la condition) | `Touret` | `first(outputs('Chercher_touret')?['body/value'])` |
 | 6 | **Switch** | `Selon_action` | Sur : `outputs('Payload')?['action']` |
 | 6a | Cas **`expedition`** → SharePoint **Mettre à jour l'élément** (Update item) | `Maj_expedition` | Liste ABAS_Tourets. Id : `outputs('Touret')?['ID']`. Title : `outputs('Touret')?['Title']`. Statut : **En livraison**. DateExpedition : `utcNow()`. NbFactures : `0`. Relance1, Relance2, DerniereFacture, DateRetour : `null` (expression) |
 | 6b | Cas **`retour`** → **Mettre à jour l'élément** | `Maj_retour` | Id et Title : idem. Statut : **Retourné**. DateRetour : `utcNow()`. AdresseRetour : `outputs('Payload')?['position']?['adresse']`. GPSRetour : `concat(outputs('Payload')?['position']?['lat'], ',', outputs('Payload')?['position']?['lng'])` |
@@ -127,6 +127,8 @@ div(sub(ticks(utcNow()), ticks(item()?['DateExpedition'])), 600000000)
 ```
 Une minute vaut 600 000 000 ticks, et `div` fait une division entière.
 
+> Libellés de cette interface : **Message** = Compose · **Demander** = Request · **Jointure** = Join · **Créer un tableau HTML** = Create HTML table.
+
 Les **Filtrer un tableau** (Filter array) se saisissent en **mode avancé** (« Modifier en mode avancé »).
 
 | # | Action | Nom | Paramètres |
@@ -144,7 +146,7 @@ La condition de `A_facturer` se lit ainsi : le nombre de périodes dues vaut 1 +
 |---|---|---|
 | **Sélectionner** (Select) | `Lignes_R1` | De : `body('A_relancer_1')`. Mappage : `Touret` → `item()?['Title']` · `Type` → `item()?['TypeTouret']` · `BL` → `item()?['BL']` · `Expédié le` → `convertFromUtc(item()?['DateExpedition'], 'Romance Standard Time', 'dd/MM/yyyy HH:mm')` |
 | **Sélectionner** (mode texte, bouton « Mode texte ») | `Numeros_R1` | De : `body('A_relancer_1')`. Valeur : `item()?['Title']` |
-| **Créer une table HTML** | `Table_R1` | De : `body('Lignes_R1')` |
+| **Créer un tableau HTML** | `Table_R1` | De : `body('Lignes_R1')` |
 | Outlook **Envoyer un e-mail (V2)** | `Mail_R1` | À : `variables('EmailTest')`. Objet : `[TEST] Relance 1 – tourets à retourner – @{items('Pour_chaque_client')?['NomClient']}`. Corps : voir modèle ci-dessous |
 | SharePoint **Créer un élément** | `Journal_R1` | Liste ABAS_Relances. Title : `concat('R1-', items('Pour_chaque_client')?['Title'], '-', formatDateTime(utcNow(), 'yyyyMMddHHmmss'))`. CodeClient / NomClient : du client. Niveau : 1. Tourets : `join(body('Numeros_R1'), ', ')`. Destinataire : `items('Pour_chaque_client')?['EmailClient']`. DateEnvoi : `utcNow()` |
 | **Appliquer à chacun** | `Maj_R1` | Sur : `body('A_relancer_1')` → **Mettre à jour l'élément** ABAS_Tourets. Id : `items('Maj_R1')?['ID']`. Title : `items('Maj_R1')?['Title']`. Relance1 : `utcNow()` |
@@ -170,11 +172,11 @@ Duplique le bloc Relance 1 (menu ··· → **Copier dans mon Presse-papiers**, 
 
 | Action | Nom | Paramètres |
 |---|---|---|
-| **Rédiger** (Compose) | `Num_facture` | `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])` |
-| **Rédiger** (Compose) | `Montant_total` | `mul(length(body('A_facturer')), variables('Tarif'))` |
+| **Message** (Compose) | `Num_facture` | `concat('FS-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'), '-', items('Pour_chaque_client')?['Title'])` |
+| **Message** (Compose) | `Montant_total` | `mul(length(body('A_facturer')), variables('Tarif'))` |
 | **Sélectionner** | `Lignes_facture` | De : `body('A_facturer')`. `Touret` → `item()?['Title']` · `Type` → `item()?['TypeTouret']` · `BL` → `item()?['BL']` · `Période n°` → `add(coalesce(item()?['NbFactures'], 0), 1)` · `Montant (€)` → `variables('Tarif')` |
 | **Sélectionner** (mode texte) | `Numeros_facture` | De : `body('A_facturer')`. Valeur : `item()?['Title']` |
-| **Créer une table HTML** | `Table_facture` | De : `body('Lignes_facture')` |
+| **Créer un tableau HTML** | `Table_facture` | De : `body('Lignes_facture')` |
 | SharePoint **Créer un élément** | `Enregistrer_facture` | Liste ABAS_Factures. Title : `outputs('Num_facture')`. CodeClient / NomClient : du client. Tourets : `join(body('Numeros_facture'), ', ')`. NbTourets : `length(body('A_facturer'))`. Montant : `outputs('Montant_total')`. DateFacture : `utcNow()` |
 | Outlook **Envoyer un e-mail (V2)** | `Mail_facture` | À : `variables('EmailTest')`. Objet : `[TEST] Facture de location fictive @{outputs('Num_facture')} – @{items('Pour_chaque_client')?['NomClient']}`. Corps : client, tableau `@{body('Table_facture')}`, total `@{outputs('Montant_total')} € HT` |
 | **Appliquer à chacun** | `Maj_facture` | Sur : `body('A_facturer')` → **Mettre à jour l'élément** ABAS_Tourets. Id / Title : `items('Maj_facture')?['ID']` / `['Title']`. NbFactures : `add(coalesce(items('Maj_facture')?['NbFactures'], 0), 1)`. DerniereFacture : `utcNow()` |
