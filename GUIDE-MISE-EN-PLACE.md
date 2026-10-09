@@ -33,7 +33,10 @@ Le flux 2 s'arrête aussi si on passe le statut à **Perdu** ou **Abîmé** à l
 
 ## Étape 1 – Créer le faux ABAS dans SharePoint (5 min)
 
-1. Choisir un site SharePoint dont tu es propriétaire. Sinon, en créer un : page d'accueil SharePoint → **+ Créer un site** → **Site d'équipe** → nom `Tourets-Simulation`, confidentialité **Privé**.
+1. Choisir où créer les listes :
+   - **Site personnel (OneDrive)** : toujours disponible, sans droits admin. Ouvrir OneDrive dans le navigateur. L'adresse du site est `https://<tenant>-my.sharepoint.com/personal/<prenom_nom_domaine>`, et c'est elle qu'on choisira dans Power Automate (« Entrer une valeur personnalisée »).
+   - **Site d'une équipe Teams** dont tu es membre : dans Teams → l'équipe → onglet **Fichiers** → **Ouvrir dans SharePoint**.
+   - **Nouveau site** : page d'accueil SharePoint → **+ Créer un site**. Ce bouton est absent si l'admin a désactivé la création de sites.
 2. Ouvrir la page d'accueil du site dans Edge ou Chrome.
 3. Appuyer sur **F12**, puis ouvrir l'onglet **Console**. Si le navigateur refuse le collage, taper `allow pasting` puis Entrée.
 4. Copier tout le contenu de `sharepoint/creer-faux-abas.js`, le coller dans la console et valider.
