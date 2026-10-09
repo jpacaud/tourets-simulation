@@ -96,7 +96,8 @@
     await call(lst(name) + "/fields/getbyinternalnameortitle('Title')", {method: "POST", headers: {...W, "X-HTTP-Method": "MERGE", "IF-MATCH": "*"},
       body: JSON.stringify({__metadata: {type: "SP.Field"}, Title: def.titre})});
     for (const f of def.champs) {
-      const exists = await call(lst(name) + `/fields/getbyinternalnameortitle('${f[0]}')`);
+      // SharePoint répond 400 (et non 404) quand la colonne n'existe pas
+      const exists = (await fetch(lst(name) + `/fields/getbyinternalnameortitle('${f[0]}')`, {headers: W})).ok;
       if (exists) continue;
       await call(lst(name) + "/fields/createfieldasxml", {method: "POST",
         body: JSON.stringify({parameters: {__metadata: {type: "SP.XmlSchemaFieldCreationInformation"}, SchemaXml: fieldXml(f), Options: 8 | 16}})});
