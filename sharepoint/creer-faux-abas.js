@@ -11,7 +11,24 @@
    Le script peut être relancé sans risque : il ne recrée pas ce qui existe déjà.
    ===================================================================== */
 (async () => {
-  const SITE = (window._spPageContextInfo && _spPageContextInfo.webAbsoluteUrl) || location.origin + location.pathname.split("/").slice(0, 3).join("/");
+  // Adresse du site cible. Laisser vide pour la détecter depuis la page ouverte,
+  // ou la forcer, ex. "https://elydan-my.sharepoint.com/personal/jpacaud_elydan_eu".
+  const SITE_FORCE = "";
+
+  async function detectSite() {
+    if (SITE_FORCE) return SITE_FORCE.replace(/\/$/, "");
+    const m = location.pathname.match(/^\/(sites|teams|personal)\/[^/]+/i);
+    if (m) return location.origin + m[0];
+    if (/-my\.sharepoint\.com$/i.test(location.hostname)) {
+      // Nouvelle interface OneDrive (/my) : on demande l'adresse du site personnel
+      const r = await fetch("/_api/SP.UserProfiles.PeopleManager/GetMyProperties?$select=PersonalUrl", {headers: {Accept: "application/json;odata=nometadata"}});
+      if (r.ok) return (await r.json()).PersonalUrl.replace(/\/$/, "");
+    }
+    throw new Error("Cette page n'est pas un site SharePoint (ex. page d'accueil SharePoint).\n" +
+      "Ouvre ton OneDrive dans le navigateur (https://elydan-my.sharepoint.com) ou un site d'équipe (/sites/...), puis relance le script.");
+  }
+  const SITE = await detectSite();
+  console.log(`Site cible : ${SITE}`);
 
   // Mêmes données que data/abas-simulation.json
   const CLIENTS = [
