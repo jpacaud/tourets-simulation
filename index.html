@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Simulation Tourets</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f4f2; --surface:#ffffff; --fg:#1d2321; --muted:#5e6864; --line:#d9ddda;
+    --accent:#0b6e4f; --accent-fg:#ffffff; --warn:#b26a00; --bad:#b3261e; --good:#1f7a3a;
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#121615; --surface:#1b201f; --fg:#e7ebe9; --muted:#9aa5a0; --line:#2e3533;
+    --accent:#3fb58b; --accent-fg:#0b1512; --warn:#e3a33b; --bad:#ef7b72; --good:#5cc27a; color-scheme:dark;}}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--font);padding:env(safe-area-inset-top,0) 16px calc(24px + env(safe-area-inset-bottom,0))}
+  main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-block:16px}
+  header{display:flex;flex-direction:column;gap:2px}
+  .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:24px;margin:0;text-wrap:balance}
+  h2{font-size:17px;margin:0}
+  p{margin:0}
+  .muted{color:var(--muted)}
+  section.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+  .kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+  button,.btn{font:inherit;font-weight:600;border:0;border-radius:8px;padding:14px 16px;background:var(--accent);color:var(--accent-fg);cursor:pointer;width:100%;text-align:center;text-decoration:none;display:block}
+  button.secondary{background:transparent;color:var(--fg);border:1px solid var(--line)}
+  button:disabled{opacity:.5;cursor:default}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .map{height:300px;border-radius:8px;border:1px solid var(--line);z-index:0}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+  .good .dot{background:var(--good)} .warn .dot{background:var(--warn)} .bad .dot{background:var(--bad)}
+  label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
+  input,select,textarea{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row>*{flex:1 1 140px}
+  .ok{border-color:var(--good)}
+  .err{color:var(--bad);font-size:14px}
+  pre{font:12px/1.4 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto;margin:0}
+  .qrs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .qrpair{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+  .qrpair .pairs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .qr{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#1d2321;min-width:0}
+  .qr .code img,.qr .code canvas{max-width:100%;height:auto}
+  .qr strong{font-family:var(--mono)}
+  .qr small{color:#5e6864;text-align:center}
+  .qr small a{color:#0b6e4f;font-weight:600}
+  .badge{display:inline-block;vertical-align:middle;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--accent);color:var(--accent-fg)}
+  .badge.ret{background:var(--warn)}
+  .msg{padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:14px;overflow-wrap:anywhere}
+  .msg.good{border-color:var(--good)} .msg.bad{border-color:var(--bad);color:var(--bad)} .msg.warn{border-color:var(--warn)}
+  ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+  .hist{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+  .hist li{display:flex;justify-content:space-between;gap:8px;font-size:14px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .hist li span:last-child{color:var(--muted);text-align:right}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script>
+/* ---------- Données fictives : simulation de ce que renverrait ABAS ----------
+   Chargées depuis data/abas-simulation.json (mêmes données que les listes SharePoint). */
+let ABAS_SIMU = {};
+async function loadAbas(){
+  const r = await fetch("data/abas-simulation.json", {cache:"no-store"});
+  const j = await r.json();
+  const clients = Object.fromEntries(j.clients.map(c => [c.code, c]));
+  ABAS_SIMU = Object.fromEntries(j.tourets.map(t => {
+    const c = clients[t.client] || {};
+    return [t.numero, {codeClient:t.client, client:c.nom, bl:t.bl, commande:t.commande, contact:c.contact, touret:t.type, consigne:t.consigne}];
+  }));
+}
+const STORE_KEY = "tourets_test_signalements";
+
+/* ---------- Connexion au workflow (déclencheur HTTP Power Automate / Copilot Studio) ----------
+   L'URL du flux n'est jamais écrite dans le code (dépôt public) : elle est enregistrée
+   dans le navigateur, via le mode bureau ou le QR code de configuration. */
+const FLOW_KEY = "tourets_flow_url";
+function getFlowUrl(){ try{ return localStorage.getItem(FLOW_KEY) || ""; }catch(e){ return ""; } }
+function setFlowUrl(u){ try{ u ? localStorage.setItem(FLOW_KEY, u) : localStorage.removeItem(FLOW_KEY); }catch(e){} }
+
+async function sendToFlow(payload){
+  const url = getFlowUrl();
+  if(!url) return {status:"off"};
+  try{
+    // text/plain : requête « simple », sans pré-vérification CORS. Le flux relit le JSON.
+    const r = await fetch(url, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(payload)});
+    let data = null; try{ data = await r.json(); }catch(e){}
+    return {status: r.ok ? "ok" : "error", code:r.status, data};
+  }catch(e){
+    // Réseau coupé, ou réponse sans en-tête CORS : le flux a peut-être quand même tourné.
+    return {status:"unknown", error:String(e)};
+  }
+}
+function flowMessage(res){
+  if(res.status === "off") return `<p class="msg warn">Workflow non configuré : rien n'a été envoyé. Configurez l'URL depuis la page d'accueil.</p>`;
+  if(res.status === "ok") return `<p class="msg good">Workflow notifié ✔${res.data?.statut ? " – statut ABAS : <strong>" + esc(res.data.statut) + "</strong>" : ""}</p>`;
+  if(res.status === "error") return `<p class="msg bad">Le workflow a répondu une erreur (HTTP ${res.code})${res.data?.message ? " : " + esc(res.data.message) : ""}.</p>`;
+  return `<p class="msg warn">Envoyé, mais la réponse du workflow n'est pas lisible (réseau ou CORS). Vérifiez l'historique d'exécution du flux.<br><small>${esc(res.error)}</small></p>`;
+}
+
+const $ = (s, el=document) => el.querySelector(s);
+const params = new URLSearchParams(location.search);
+const touretId = (params.get("t") || "").trim().toUpperCase();
+const action = params.get("a") === "exp" ? "expedition" : "retour";
+const baseUrl = location.origin + location.pathname;
+
+function loadHist(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }catch(e){ return []; } }
+function saveHist(h){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(h)); }catch(e){} }
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(iso){ return new Date(iso).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"}); }
+function precisionClass(m){ return m <= 25 ? "good" : m <= 100 ? "warn" : "bad"; }
+function precisionLabel(m){ return m <= 25 ? "Bonne précision" : m <= 100 ? "Précision moyenne" : "Précision faible – ajustez le point"; }
+
+function tiles(map){
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+}
+
+async function reverseGeocode(lat, lng){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&accept-language=fr`);
+    const j = await r.json();
+    return j.display_name || "";
+  }catch(e){ return ""; }
+}
+
+/* =================== MODE EXPÉDITION (QR « départ livraison ») =================== */
+function renderExpedition(){
+  const info = ABAS_SIMU[touretId];
+  $("#app").innerHTML = `
+    <header>
+      <span class="eyebrow">Elydan · Expédition (simulation)</span>
+      <h1>Touret ${esc(touretId)} <span class="badge">Départ</span></h1>
+      <p class="muted">Confirmez le chargement du touret pour la livraison. Cela démarre le cycle de relances et de facturation.</p>
+    </header>
+    <section class="card">
+      <h2>Données ERP (simulation ABAS)</h2>
+      ${info ? `<dl class="kv">
+        <dt>Client</dt><dd>${esc(info.client)}</dd>
+        <dt>BL</dt><dd>${esc(info.bl)}</dd>
+        <dt>Commande</dt><dd>${esc(info.commande)}</dd>
+        <dt>Touret</dt><dd>${esc(info.touret)}</dd>
+      </dl>` : `<p class="err">Touret inconnu dans les données de simulation.</p>`}
+    </section>
+    <section class="card" id="sendCard">
+      <button id="btnExp" ${info ? "" : "disabled"}>Confirmer : parti en livraison</button>
+      <p class="muted">Simulation : relance 1 à +10 min, relance 2 à +20 min, facturation à +30 min puis toutes les 30 min, jusqu'au scan de retour.</p>
+    </section>
+    <section class="card" id="doneCard" hidden></section>`;
+
+  $("#btnExp").onclick = async () => {
+    const payload = {action:"expedition", touret:touretId, bl:info.bl, codeClient:info.codeClient, date:new Date().toISOString()};
+    $("#btnExp").disabled = true; $("#btnExp").textContent = "Envoi…";
+    const res = await sendToFlow(payload);
+    $("#sendCard").hidden = true;
+    const done = $("#doneCard"); done.hidden = false;
+    done.innerHTML = `<h2>Départ enregistré</h2>${flowMessage(res)}<pre>${esc(JSON.stringify(payload, null, 2))}</pre>
+      <a class="btn" href="${esc(baseUrl)}">Retour à l'accueil</a>`;
+  };
+}
+
+/* =================== MODE TERRAIN (QR « retour » scanné) =================== */
+function renderTerrain(){
+  const info = ABAS_SIMU[touretId];
+  $("#app").innerHTML = `
+    <header>
+      <span class="eyebrow">Elydan · Retour de touret (simulation)</span>
+      <h1>Touret ${esc(touretId)} <span class="badge ret">Retour</span></h1>
+      <p class="muted">Indiquez où se trouve le touret pour que nous venions le récupérer.</p>
+    </header>
+
+    <section class="card">
+      <h2>Données ERP (simulation ABAS)</h2>
+      ${info ? `<dl class="kv">
+        <dt>Client</dt><dd>${esc(info.client)}</dd>
+        <dt>BL</dt><dd>${esc(info.bl)}</dd>
+        <dt>Commande</dt><dd>${esc(info.commande)}</dd>
+        <dt>Contact</dt><dd>${esc(info.contact)}</dd>
+        <dt>Touret</dt><dd>${esc(info.touret)}</dd>
+        <dt>Consigne</dt><dd>${esc(info.consigne)}</dd>
+      </dl>` : `<p class="muted">Aucune donnée de test pour ce numéro. En production, ces informations viendraient d'ABAS.</p>`}
+      <span class="tag">Données fictives – en production, non visibles par le poseur</span>
+    </section>
+
+    <section class="card">
+      <h2>1. Position du touret</h2>
+      <p class="muted" id="geoHelp">Appuyez sur le bouton puis autorisez l'accès à votre position.</p>
+      <button id="btnGeo">Me localiser</button>
+      <div id="geoState"></div>
+      <div id="map" class="map" hidden></div>
+      <p class="muted" id="addr"></p>
+      <p class="muted" id="dragHint" hidden>Vous pouvez déplacer le repère si le touret n'est pas exactement à votre position.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Informations (facultatif)</h2>
+      <div class="row">
+        <label for="etat">État du touret
+          <select id="etat">
+            <option value="vide">Vide</option>
+            <option value="reste">Reste du câble/tube</option>
+          </select>
+        </label>
+        <label for="role">Vous êtes
+          <select id="role">
+            <option value="poseur">Poseur / client</option>
+            <option value="transporteur">Transporteur</option>
+          </select>
+        </label>
+      </div>
+      <label for="comment">Accès, remarque
+        <textarea id="comment" rows="2" placeholder="Ex. : derrière le portail, côté parking"></textarea>
+      </label>
+      <label for="photo">Photo
+        <input id="photo" type="file" accept="image/*" capture="environment">
+      </label>
+    </section>
+
+    <section class="card" id="sendCard">
+      <button id="btnSend" disabled>Signaler : prêt à enlever</button>
+      <p class="muted" id="sendHelp">Localisez d'abord le touret.</p>
+    </section>
+
+    <section class="card" id="doneCard" hidden></section>
+    ${histSection()}
+  `;
+
+  let map, marker, circle, pos = null, watchId = null, timer = null;
+
+  $("#btnGeo").onclick = () => {
+    if(!("geolocation" in navigator)){ $("#geoState").innerHTML = `<p class="err">Ce navigateur ne permet pas la géolocalisation.</p>`; return; }
+    if(!window.isSecureContext){ $("#geoState").innerHTML = `<p class="err">La position n'est disponible que sur une page en https://. Hébergez ce fichier en HTTPS (voir mode bureau).</p>`; }
+    $("#btnGeo").disabled = true;
+    $("#btnGeo").textContent = "Recherche de la position…";
+    let best = null;
+    watchId = navigator.geolocation.watchPosition(p => {
+      if(!best || p.coords.accuracy < best.coords.accuracy){ best = p; show(p.coords.latitude, p.coords.longitude, p.coords.accuracy, "gps"); }
+      if(p.coords.accuracy <= 15) stop();
+    }, err => {
+      stop();
+      const msg = err.code === 1 ? "Accès à la position refusé." : "Position introuvable.";
+      $("#geoState").innerHTML = `<p class="err">${msg} Touchez la carte pour placer le touret à la main.</p>`;
+      if(!pos) show(45.75, 4.85, null, "manuel", 6);
+    }, {enableHighAccuracy:true, maximumAge:0, timeout:20000});
+    timer = setTimeout(stop, 12000);
+  };
+
+  function stop(){
+    if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+    clearTimeout(timer);
+    $("#btnGeo").disabled = false;
+    $("#btnGeo").textContent = "Relancer la localisation";
+  }
+
+  function show(lat, lng, acc, source, zoom){
+    $("#map").hidden = false;
+    if(!map){
+      map = L.map("map").setView([lat,lng], zoom || 17);
+      tiles(map);
+      marker = L.marker([lat,lng],{draggable:true}).addTo(map);
+      marker.on("dragend", () => { const ll = marker.getLatLng(); setPos(ll.lat, ll.lng, null, "ajusté"); });
+      map.on("click", e => { marker.setLatLng(e.latlng); setPos(e.latlng.lat, e.latlng.lng, null, "manuel"); });
+      $("#dragHint").hidden = false;
+      setTimeout(() => map.invalidateSize(), 50);
+    } else {
+      marker.setLatLng([lat,lng]); map.setView([lat,lng], zoom || Math.max(map.getZoom(),17));
+    }
+    if(circle){ circle.remove(); circle = null; }
+    if(acc){ circle = L.circle([lat,lng],{radius:acc,color:"#0b6e4f",weight:1,fillOpacity:.12}).addTo(map); }
+    setPos(lat, lng, acc, source);
+  }
+
+  let geoTimer;
+  function setPos(lat, lng, acc, source){
+    pos = {lat:+lat.toFixed(6), lng:+lng.toFixed(6), precision_m: acc ? Math.round(acc) : null, source};
+    const cls = acc ? precisionClass(acc) : "good";
+    $("#geoState").innerHTML = acc
+      ? `<span class="pill ${cls}"><span class="dot"></span>${precisionLabel(acc)} (± ${Math.round(acc)} m)</span>`
+      : `<span class="pill good"><span class="dot"></span>Position placée à la main</span>`;
+    $("#btnSend").disabled = false;
+    $("#sendHelp").textContent = `${pos.lat}, ${pos.lng}`;
+    clearTimeout(geoTimer);
+    geoTimer = setTimeout(async () => {
+      $("#addr").textContent = "Recherche de l'adresse…";
+      const a = await reverseGeocode(pos.lat, pos.lng);
+      pos.adresse = a;
+      $("#addr").textContent = a ? "≈ " + a : "";
+    }, 600);
+  }
+
+  $("#btnSend").onclick = async () => {
+    if(!pos) return;
+    const photo = $("#photo").files[0];
+    const payload = {
+      action: "retour",
+      touret: touretId,
+      statut: "pret_a_enlever",
+      position: pos,
+      etat: $("#etat").value,
+      role: $("#role").value,
+      commentaire: $("#comment").value.trim(),
+      photo: photo ? photo.name : null,
+      date: new Date().toISOString(),
+      appareil: navigator.userAgent.slice(0,80)
+    };
+    const h = loadHist(); h.unshift({...payload, client: ABAS_SIMU[touretId]?.client || null}); saveHist(h.slice(0,50));
+    $("#btnSend").disabled = true; $("#btnSend").textContent = "Envoi…";
+    const res = await sendToFlow(payload);
+    $("#sendCard").hidden = true;
+    const done = $("#doneCard");
+    done.hidden = false;
+    done.innerHTML = `
+      <h2>Merci, c'est enregistré</h2>
+      <p>Le touret <strong>${esc(touretId)}</strong> est signalé prêt à enlever.</p>
+      ${flowMessage(res)}
+      <p class="muted">Données transmises au workflow, qui les écrit dans le faux ABAS (ce qui arrête les relances et la facturation) :</p>
+      <pre>${esc(JSON.stringify(payload, null, 2))}</pre>`;
+    done.scrollIntoView({behavior:"smooth"});
+    refreshHist();
+  };
+
+  initHistMap();
+}
+
+/* =================== MODE BUREAU (pas de n° dans l'URL) =================== */
+function renderBureau(){
+  const secure = window.isSecureContext;
+  $("#app").innerHTML = `
+    <header>
+      <span class="eyebrow">Elydan · Prototype</span>
+      <h1>Simulation du cycle des tourets</h1>
+      <p class="muted">Scannez un QR « Départ » pour lancer le cycle, puis un QR « Retour » pour l'arrêter.</p>
+    </header>
+
+    ${secure ? "" : `<section class="card"><p class="err"><strong>Page ouverte en local.</strong> Les QR codes ne fonctionneront depuis un téléphone qu'une fois cette page hébergée en https (ex. GitHub Pages).</p></section>`}
+
+    <section class="card">
+      <h2>Connexion au workflow</h2>
+      <div id="flowState"></div>
+      <label for="flowUrl">URL du déclencheur HTTP du flux « Tourets – Réception scan »
+        <input id="flowUrl" type="url" placeholder="https://…/triggers/manual/paths/invoke?…" autocomplete="off">
+      </label>
+      <div class="row">
+        <button id="btnFlowSave">Enregistrer sur cet appareil</button>
+        <button id="btnFlowClear" class="secondary">Effacer</button>
+      </div>
+      <div id="flowQrBox" hidden>
+        <p class="muted">Pour configurer le téléphone, scannez une fois ce QR : l'URL est enregistrée dans son navigateur.</p>
+        <div class="qr" style="max-width:290px;margin:12px auto 0"><div class="code" id="flowQr"></div><small>QR de configuration – ne pas diffuser</small></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>QR codes de test</h2>
+      <p class="muted">« Départ » : scan au chargement, démarre le cycle. « Retour » : scan du touret vide sur chantier, arrête le cycle.</p>
+      <div class="qrs" id="qrs"></div>
+    </section>
+
+    <section class="card">
+      <h2>Saisie manuelle</h2>
+      <div class="row">
+        <label for="manual">N° de touret
+          <input id="manual" placeholder="TEST-001">
+        </label>
+      </div>
+      <div class="row">
+        <button id="btnManualExp" class="secondary">Départ livraison</button>
+        <button id="btnManual" class="secondary">Retour</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Déroulé du test</h2>
+      <ol class="steps">
+        <li>Collez l'URL du workflow ci-dessus, puis scannez le QR de configuration avec le téléphone.</li>
+        <li>Scannez un QR « Départ » et confirmez : le faux ABAS passe le touret « En livraison ».</li>
+        <li>Attendez : mail de relance 1 à +10 min, relance 2 à +20 min, facture fictive à +30 min puis toutes les 30 min.</li>
+        <li>Scannez le QR « Retour », localisez le touret et touchez « Signaler : prêt à enlever » : le cycle s'arrête.</li>
+      </ol>
+      <p class="muted">Les mails de test arrivent dans votre boîte avec [TEST] dans l'objet. Le suivi est visible dans les listes SharePoint ABAS_*.</p>
+    </section>
+    ${histSection()}
+  `;
+
+  const qrs = $("#qrs");
+  Object.keys(ABAS_SIMU).forEach(id => {
+    const pair = document.createElement("div");
+    pair.className = "qrpair";
+    pair.innerHTML = `<div><strong>${esc(id)}</strong> · <span class="muted">${esc(ABAS_SIMU[id].client)}</span></div><div class="pairs"></div>`;
+    qrs.appendChild(pair);
+    [["exp","Départ livraison"],["ret","Retour"]].forEach(([a,label]) => {
+      const url = a === "exp" ? `${baseUrl}?t=${id}&a=exp` : `${baseUrl}?t=${id}`;
+      const box = document.createElement("div");
+      box.className = "qr";
+      box.innerHTML = `<div class="code"></div><small><a href="${esc(url)}">${label}</a></small>`;
+      pair.querySelector(".pairs").appendChild(box);
+      try{ new QRCode(box.querySelector(".code"), {text:url, width:120, height:120, correctLevel:QRCode.CorrectLevel.M}); }
+      catch(e){ box.querySelector(".code").textContent = url; }
+    });
+  });
+
+  function refreshFlow(){
+    const u = getFlowUrl();
+    $("#flowUrl").value = u;
+    $("#flowState").innerHTML = u ? `<span class="pill good"><span class="dot"></span>Workflow configuré sur cet appareil</span>`
+                                  : `<span class="pill warn"><span class="dot"></span>Non configuré : les scans ne déclenchent rien</span>`;
+    $("#flowQrBox").hidden = !u;
+    $("#flowQr").innerHTML = "";
+    if(u){
+      const cfg = `${baseUrl}#flow=${encodeURIComponent(u)}`;
+      try{ new QRCode($("#flowQr"), {text:cfg, width:256, height:256, correctLevel:QRCode.CorrectLevel.L}); }
+      catch(e){ $("#flowQr").textContent = "URL trop longue pour un QR : saisissez-la sur le téléphone."; }
+    }
+  }
+  $("#btnFlowSave").onclick = () => { setFlowUrl($("#flowUrl").value.trim()); refreshFlow(); };
+  $("#btnFlowClear").onclick = () => { setFlowUrl(""); refreshFlow(); };
+  refreshFlow();
+
+  const manualId = () => $("#manual").value.trim().toUpperCase();
+  $("#btnManual").onclick = () => { const v = manualId(); if(v) location.href = `${baseUrl}?t=${encodeURIComponent(v)}`; };
+  $("#btnManualExp").onclick = () => { const v = manualId(); if(v) location.href = `${baseUrl}?t=${encodeURIComponent(v)}&a=exp`; };
+
+  initHistMap();
+}
+
+/* =================== Historique + carte des signalements =================== */
+function histSection(){
+  return `<section class="card" id="histCard">
+    <h2>Signalements de retour sur cet appareil</h2>
+    <div id="histMap" class="map"></div>
+    <ul class="hist" id="histList"></ul>
+    <button id="btnClear" class="secondary">Effacer les signalements de test</button>
+  </section>`;
+}
+let histMap, histLayer;
+function initHistMap(){
+  histMap = L.map("histMap").setView([46.6, 2.5], 5);
+  tiles(histMap);
+  histLayer = L.layerGroup().addTo(histMap);
+  $("#btnClear").onclick = () => { saveHist([]); refreshHist(); };
+  refreshHist();
+}
+function refreshHist(){
+  const h = loadHist();
+  histLayer.clearLayers();
+  const list = $("#histList");
+  if(!h.length){
+    list.innerHTML = `<li><span class="muted">Aucun signalement pour l'instant. Scannez un QR « Retour » pour en créer un.</span></li>`;
+    $("#btnClear").hidden = true;
+    return;
+  }
+  $("#btnClear").hidden = false;
+  const pts = [];
+  list.innerHTML = h.map(s => `<li><span><strong>${esc(s.touret)}</strong> · ${esc(s.etat === "vide" ? "vide" : "reste")}${s.client ? " · " + esc(s.client) : ""}</span><span>${fmtDate(s.date)}</span></li>`).join("");
+  h.forEach(s => {
+    const ll = [s.position.lat, s.position.lng]; pts.push(ll);
+    L.marker(ll).addTo(histLayer).bindPopup(
+      `<strong>${esc(s.touret)}</strong><br>${esc(s.client || "")}<br>${esc(s.position.adresse || (s.position.lat + ", " + s.position.lng))}<br>${s.position.precision_m ? "± " + s.position.precision_m + " m" : "placé à la main"}<br>${esc(s.commentaire || "")}`);
+  });
+  if(pts.length === 1) histMap.setView(pts[0], 15); else histMap.fitBounds(pts, {padding:[30,30]});
+}
+
+/* =================== Démarrage =================== */
+// QR de configuration : #flow=<url> enregistre l'URL du workflow puis nettoie l'adresse.
+if(location.hash.startsWith("#flow=")){
+  setFlowUrl(decodeURIComponent(location.hash.slice(6)));
+  history.replaceState(null, "", baseUrl);
+  alert("Workflow configuré sur cet appareil.");
+}
+(async () => {
+  if(typeof L === "undefined"){
+    $("#app").innerHTML = `<p class="err">Impossible de charger la carte. Vérifiez la connexion internet.</p>`; return;
+  }
+  try{ await loadAbas(); }
+  catch(e){ $("#app").innerHTML = `<p class="err">Impossible de lire data/abas-simulation.json. Ouvrez la page via https (GitHub Pages) ou un serveur local, pas en double-cliquant le fichier.</p>`; return; }
+  if(touretId && action === "expedition") renderExpedition();
+  else if(touretId) renderTerrain();
+  else renderBureau();
+})();
+</script>
+</body>
+</html>

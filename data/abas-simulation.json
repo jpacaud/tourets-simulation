@@ -1,0 +1,16 @@
+{
+  "_info": "Données fictives simulant ABAS. Même contenu que les listes SharePoint créées par sharepoint/creer-faux-abas.js.",
+  "clients": [
+    {"code": "CLI-001", "nom": "Exemple TP Rhône-Alpes", "contact": "M. Exemple – 06 00 00 00 01", "email": "contact@exemple-tp-ra.test"},
+    {"code": "CLI-002", "nom": "Exemple Réseaux Sud", "contact": "Mme Exemple – 06 00 00 00 02", "email": "contact@exemple-reseaux-sud.test"},
+    {"code": "CLI-003", "nom": "Exemple Fibre Ouest", "contact": "M. Exemple – 06 00 00 00 03", "email": "contact@exemple-fibre-ouest.test"}
+  ],
+  "tourets": [
+    {"numero": "TEST-001", "type": "Touret bois Ø1600", "client": "CLI-001", "bl": "BL-2026-104512", "commande": "CDE-88412", "consigne": "Oui – 120 €"},
+    {"numero": "TEST-002", "type": "Touret bois Ø1250", "client": "CLI-002", "bl": "BL-2026-104530", "commande": "CDE-88437", "consigne": "Oui – 90 €"},
+    {"numero": "TEST-003", "type": "Touret métal Ø2000", "client": "CLI-003", "bl": "BL-2026-104577", "commande": "CDE-88501", "consigne": "Oui – 350 €"},
+    {"numero": "TEST-004", "type": "Touret bois Ø1600", "client": "CLI-001", "bl": "BL-2026-104512", "commande": "CDE-88412", "consigne": "Oui – 120 €"},
+    {"numero": "TEST-005", "type": "Touret bois Ø1400", "client": "CLI-001", "bl": "BL-2026-104598", "commande": "CDE-88533", "consigne": "Oui – 100 €"},
+    {"numero": "TEST-006", "type": "Touret type E (métal Ø2400)", "client": "CLI-002", "bl": "BL-2026-104530", "commande": "CDE-88437", "consigne": "Oui – 400 €"}
+  ]
+}
