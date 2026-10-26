@@ -103,7 +103,7 @@ function buildFormsUrl(u, payload){
   for(const [k, v] of [...url.searchParams]){
     const quoted = /^".*"$/.test(v);
     // Tolère une faute de frappe dans les valeurs témoins (DONNES, DONNÉES…)
-    const brut = v.replace(/^"|"$/g, "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const brut = v.replace(/^"|"$/g, "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const key = brut.startsWith("DONN") ? "DONNEES" : brut;
     // Forms lit chaque valeur comme du JSON : le JSON du scan doit être passé en chaîne (entre guillemets)
     if(key === "DONNEES") url.searchParams.set(k, JSON.stringify(vals[key]));
