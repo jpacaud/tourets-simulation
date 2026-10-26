@@ -91,9 +91,29 @@ const FLOW_KEY = "tourets_flow_url";
 function getFlowUrl(){ try{ return localStorage.getItem(FLOW_KEY) || ""; }catch(e){ return ""; } }
 function setFlowUrl(u){ try{ u ? localStorage.setItem(FLOW_KEY, u) : localStorage.removeItem(FLOW_KEY); }catch(e){} }
 
+/* Plan B sans Premium : si l'URL enregistrée est un lien prérempli Microsoft Forms,
+   on remplace les valeurs témoins TOURET / ACTION / DONNEES par celles du scan et on ouvre
+   le formulaire. L'utilisateur appuie sur « Envoyer », ce qui déclenche le flux 1. */
+function isFormsUrl(u){ return /^https:\/\/forms\.(office\.com|microsoft\.com|cloud\.microsoft)\//i.test(u); }
+function buildFormsUrl(u, payload){
+  const vals = {TOURET: payload.touret, ACTION: payload.action, DONNEES: JSON.stringify(payload)};
+  const url = new URL(u);
+  for(const [k, v] of [...url.searchParams]){
+    const quoted = /^".*"$/.test(v);
+    const key = v.replace(/^"|"$/g, "").trim().toUpperCase();
+    if(key in vals) url.searchParams.set(k, quoted ? `"${vals[key]}"` : vals[key]);
+  }
+  return url.toString().replace(/\+/g, "%20"); // espaces en %20 : Forms ne décode pas toujours « + »
+}
+
 async function sendToFlow(payload){
   const url = getFlowUrl();
   if(!url) return {status:"off"};
+  if(isFormsUrl(url)){
+    const target = buildFormsUrl(url, payload);
+    setTimeout(() => { location.href = target; }, 1200);
+    return {status:"form", url:target};
+  }
   try{
     // text/plain : requête « simple », sans pré-vérification CORS. Le flux relit le JSON.
     const r = await fetch(url, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(payload)});
@@ -105,6 +125,7 @@ async function sendToFlow(payload){
   }
 }
 function flowMessage(res){
+  if(res.status === "form") return `<p class="msg warn">Ouverture du formulaire… <strong>Appuyez sur « Envoyer »</strong> en bas du formulaire pour valider.<br><a href="${esc(res.url)}">Ouvrir le formulaire</a> s'il ne s'ouvre pas tout seul.</p>`;
   if(res.status === "off") return `<p class="msg warn">Workflow non configuré : rien n'a été envoyé. Configurez l'URL depuis la page d'accueil.</p>`;
   if(res.status === "ok") return `<p class="msg good">Workflow notifié ✔${res.data?.statut ? " – statut ABAS : <strong>" + esc(res.data.statut) + "</strong>" : ""}</p>`;
   if(res.status === "error") return `<p class="msg bad">Le workflow a répondu une erreur (HTTP ${res.code})${res.data?.message ? " : " + esc(res.data.message) : ""}.</p>`;
@@ -349,8 +370,8 @@ function renderBureau(){
     <section class="card">
       <h2>Connexion au workflow</h2>
       <div id="flowState"></div>
-      <label for="flowUrl">URL du déclencheur HTTP du flux « Tourets – Réception scan »
-        <input id="flowUrl" type="url" placeholder="https://…/triggers/manual/paths/invoke?…" autocomplete="off">
+      <label for="flowUrl">Lien prérempli du formulaire Forms (sans Premium) ou URL du déclencheur HTTP du flux « Tourets – Réception scan »
+        <input id="flowUrl" type="url" placeholder="https://forms.office.com/…  ou  https://…/triggers/manual/paths/invoke?…" autocomplete="off">
       </label>
       <div class="row">
         <button id="btnFlowSave">Enregistrer sur cet appareil</button>
