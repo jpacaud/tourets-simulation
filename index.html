@@ -101,7 +101,9 @@ function buildFormsUrl(u, payload){
   for(const [k, v] of [...url.searchParams]){
     const quoted = /^".*"$/.test(v);
     const key = v.replace(/^"|"$/g, "").trim().toUpperCase();
-    if(key in vals) url.searchParams.set(k, quoted ? `"${vals[key]}"` : vals[key]);
+    // Forms lit chaque valeur comme du JSON : le JSON du scan doit être passé en chaîne (entre guillemets)
+    if(key === "DONNEES") url.searchParams.set(k, JSON.stringify(vals[key]));
+    else if(key in vals) url.searchParams.set(k, quoted ? `"${vals[key]}"` : vals[key]);
   }
   return url.toString().replace(/\+/g, "%20"); // espaces en %20 : Forms ne décode pas toujours « + »
 }
