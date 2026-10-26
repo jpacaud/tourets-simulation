@@ -96,11 +96,15 @@ function setFlowUrl(u){ try{ u ? localStorage.setItem(FLOW_KEY, u) : localStorag
    le formulaire. L'utilisateur appuie sur « Envoyer », ce qui déclenche le flux 1. */
 function isFormsUrl(u){ return /^https:\/\/forms\.(office\.com|microsoft\.com|cloud\.microsoft)\//i.test(u); }
 function buildFormsUrl(u, payload){
-  const vals = {TOURET: payload.touret, ACTION: payload.action, DONNEES: JSON.stringify(payload)};
+  // appareil et photo ne servent pas au flux : on les retire pour garder un lien court
+  const {appareil, photo, ...donnees} = payload;
+  const vals = {TOURET: payload.touret, ACTION: payload.action, DONNEES: JSON.stringify(donnees)};
   const url = new URL(u);
   for(const [k, v] of [...url.searchParams]){
     const quoted = /^".*"$/.test(v);
-    const key = v.replace(/^"|"$/g, "").trim().toUpperCase();
+    // Tolère une faute de frappe dans les valeurs témoins (DONNES, DONNÉES…)
+    const brut = v.replace(/^"|"$/g, "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const key = brut.startsWith("DONN") ? "DONNEES" : brut;
     // Forms lit chaque valeur comme du JSON : le JSON du scan doit être passé en chaîne (entre guillemets)
     if(key === "DONNEES") url.searchParams.set(k, JSON.stringify(vals[key]));
     else if(key in vals) url.searchParams.set(k, quoted ? `"${vals[key]}"` : vals[key]);
